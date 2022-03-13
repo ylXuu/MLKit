@@ -35,7 +35,8 @@ import com.google.mlkit.vision.face.Face
 
 
 //typealias FaceListener = (face: List<Face>) -> Unit
-typealias FaceListener = (face: FaceLandmark?) -> Unit
+//typealias FaceListener = (face: FaceLandmark?) -> Unit
+typealias FaceListener = (face: Map<String, Float?>) -> Unit
 
 
 class MainActivity : AppCompatActivity() {
@@ -194,6 +195,7 @@ class MainActivity : AppCompatActivity() {
                     it.setSurfaceProvider(viewBinding.viewFinder.surfaceProvider)
                 }
 
+
             imageCapture = ImageCapture.Builder()
                 .build()
 
@@ -212,8 +214,13 @@ class MainActivity : AppCompatActivity() {
                 .also {
                     it.setAnalyzer(cameraExecutor, FaceAnalyzer { face ->
                         // TODO
-                        Log.d(TAG, "$face")
-
+                        // D/CameraXApp: The probability of smiling : {smileProb=xxx, leftEyeOpenProb=xxx, rightEyeOpenProb=xxx}
+                        // face是Map类型，包含三个概率，需要把每次获取到的三个概率保存下来，最终得到face~时间t的数组
+                        // 每次都进行检测，一旦检测到smileProb < 0.1，就提示请保持微笑
+                        Log.d(TAG, "The probabilities : $face")
+                        if (face["smileProb"]!! < 0.1) {
+                            Log.e(TAG, "Please keep smiling! You are doing very well!")
+                        }
                     })
                 }
 
@@ -228,7 +235,9 @@ class MainActivity : AppCompatActivity() {
 
                 // Bind use cases to camera
                 cameraProvider
-                    .bindToLifecycle(this, cameraSelector, preview, imageAnalyzer, imageCapture)
+                    //.bindToLifecycle(this, cameraSelector, preview, imageAnalyzer, videoCapture)
+                    .bindToLifecycle(this, cameraSelector, preview, imageAnalyzer, imageCapture) // 因为VideoCapture目前无法运行，所以先用imageCapture代替
+                    //.bindToLifecycle(this, cameraSelector, preview, imageCapture, videoCapture)
             } catch(exc: Exception) {
                 Log.e(TAG, "Use case binding failed", exc)
             }
@@ -286,8 +295,9 @@ private class FaceAnalyzer(private val listener: FaceListener) : ImageAnalysis.A
     // make the options
     private val opts = FaceDetectorOptions.Builder()
         .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST) // 速度优先
-        .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_ALL) // 检测眼睛、耳朵、鼻子、脸颊、嘴巴等
-        .setContourMode(FaceDetectorOptions.CONTOUR_MODE_ALL) // 检测面部特征的轮廓
+        //.setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_ALL) // 检测眼睛、耳朵、鼻子、脸颊、嘴巴等
+        //.setContourMode(FaceDetectorOptions.CONTOUR_MODE_ALL) // 检测面部特征的轮廓
+        .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_ALL) // 开启检测微笑、睁眼等特征
         .build()
 
     private val faceDetector = FaceDetection.getClient(opts)
@@ -306,8 +316,24 @@ private class FaceAnalyzer(private val listener: FaceListener) : ImageAnalysis.A
                 .addOnSuccessListener { faces ->
                     // TODO
                     for (face in faces){
-                        val leftEye = face.getLandmark(FaceLandmark.LEFT_EYE)
-                        listener(leftEye)
+                        var smileProb : Float? = 0.0f
+                        var leftEyeOpenProb : Float? = 0.0f
+                        var rightEyeOpenProb : Float? = 0.0f
+
+                        if (face.smilingProbability != null) {
+                            smileProb = face.smilingProbability
+                        }
+
+                        if (face.leftEyeOpenProbability != null) {
+                            leftEyeOpenProb = face.leftEyeOpenProbability
+                        }
+
+                        if (face.rightEyeOpenProbability != null) {
+                            rightEyeOpenProb = face.rightEyeOpenProbability
+                        }
+
+                        var mp = mapOf("smileProb" to smileProb, "leftEyeOpenProb" to leftEyeOpenProb, "rightEyeOpenProb" to rightEyeOpenProb)
+                        listener(mp)
                     }
 
                 }
